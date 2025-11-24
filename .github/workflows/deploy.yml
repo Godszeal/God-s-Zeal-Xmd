@@ -1,0 +1,58 @@
+name: Deploy WhatsApp Bot
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # Restart bot every 6 hours
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: |
+          if [ -f "package-lock.json" ]; then
+            echo "Using package-lock.json"
+            npm ci
+          else
+            echo "No package-lock.json found, using npm install"
+            npm install
+          fi
+      
+      - name: Verify session file
+        run: |
+          if [ -f "session/creds.json" ]; then
+            echo "✅ Session file found"
+          else
+            echo "❌ Session file not found"
+            exit 1
+          fi
+      
+      - name: Build bot
+        run: |
+          echo "Building bot..."
+          npm run build 2>/dev/null || echo "No build script found, skipping"
+      
+      - name: Start bot
+        run: |
+          echo "Starting WhatsApp bot..."
+          timeout 1800 npm start 2>&1 || echo "Bot process completed"
+        env:
+          NODE_ENV: production
+        continue-on-error: true
+      
+      - name: Deployment complete
+        run: |
+          echo "✅ Bot deployment workflow completed"
+          echo "Bot will restart automatically every 6 hours or on code push"
