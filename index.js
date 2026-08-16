@@ -6,12 +6,24 @@ const { execFileSync } = require('child_process')
 // Panel uploads contain package.json but not node_modules. Install production
 // dependencies before loading the bot so fresh deployments do not crash with
 // MODULE_NOT_FOUND (for example, @hapi/boom).
-const dependencyMarker = path.join(__dirname, 'node_modules', '@hapi', 'boom', 'package.json')
-if (!fs.existsSync(dependencyMarker)) {
-  console.log('[bootstrap] Installing bot dependencies before startup…')
-  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
-    'install', '--legacy-peer-deps', '--omit=dev', '--no-progress', '--no-audit', '--no-fund', '--loglevel=warn',
-  ], { cwd: __dirname, stdio: 'inherit' })
+const dependencyMarkers = [
+  path.join(__dirname, 'node_modules', '@hapi', 'boom', 'package.json'),
+  path.join(__dirname, 'node_modules', '@whiskeysockets', 'baileys', 'package.json'),
+  path.join(__dirname, 'node_modules', 'dotenv', 'package.json'),
+]
+if (dependencyMarkers.some((marker) => !fs.existsSync(marker))) {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  console.log('[bootstrap] Installing all bot dependencies inside the panel container before startup…')
+  try {
+    execFileSync(npmCommand, ['--version'], { cwd: __dirname, stdio: 'pipe' })
+    execFileSync(npmCommand, [
+      'install', '--legacy-peer-deps', '--omit=dev', '--no-progress', '--no-audit', '--no-fund', '--loglevel=warn',
+    ], { cwd: __dirname, stdio: 'inherit' })
+  } catch (error) {
+    console.error('[bootstrap] npm is required in the panel Node.js container and dependency installation failed.')
+    throw error
+  }
+  console.log('[bootstrap] Panel dependency installation completed.')
 }
 
 const { Boom } = require('@hapi/boom')
