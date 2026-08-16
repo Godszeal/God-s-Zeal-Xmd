@@ -1,9 +1,22 @@
 require('./settings')
-const { Boom } = require('@hapi/boom')
 const fs = require('fs')
+const path = require('path')
+const { execFileSync } = require('child_process')
+
+// Panel uploads contain package.json but not node_modules. Install production
+// dependencies before loading the bot so fresh deployments do not crash with
+// MODULE_NOT_FOUND (for example, @hapi/boom).
+const dependencyMarker = path.join(__dirname, 'node_modules', '@hapi', 'boom', 'package.json')
+if (!fs.existsSync(dependencyMarker)) {
+  console.log('[bootstrap] Installing bot dependencies before startup…')
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
+    'install', '--legacy-peer-deps', '--omit=dev',
+  ], { cwd: __dirname, stdio: 'inherit' })
+}
+
+const { Boom } = require('@hapi/boom')
 const chalk = require('chalk')
 const FileType = require('file-type')
-const path = require('path')
 const axios = require('axios')
 const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
 const PhoneNumber = require('awesome-phonenumber')
