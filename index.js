@@ -105,6 +105,34 @@ let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 global.botname = "𝐆𝐎𝐃𝐒𝐙𝐄𝐀𝐋 𝐗𝐌𝐃"
 global.themeemoji = "•"
 
+const DEFAULT_BOT_LOGO = path.join(__dirname, 'assets', 'bot_image.jpg')
+
+/** Apply the bundled logo after WhatsApp authentication completes. */
+async function applyDefaultBotLogo(sock) {
+    if (!sock?.user?.id) return
+    if (!existsSync(DEFAULT_BOT_LOGO)) {
+        console.warn(`[profile] Default bot logo not found: ${DEFAULT_BOT_LOGO}`)
+        return
+    }
+
+    const jid = jidNormalizedUser(sock.user.id)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            // WhatsApp can reject profile updates immediately after the socket
+            // opens; a short delay plus retries makes deployment reliable.
+            await delay(attempt === 1 ? 2500 : 5000)
+            await sock.updateProfilePicture(jid, { url: DEFAULT_BOT_LOGO })
+            console.log(`[profile] Default bot logo applied (attempt ${attempt})`)
+            return
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            console.warn(`[profile] Logo update attempt ${attempt}/3 failed: ${message}`)
+        }
+    }
+
+    console.warn('[profile] Could not apply the default bot logo after 3 attempts')
+}
+
 const settings = require('./settings')
 const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
 const useMobile = process.argv.includes("--mobile")
@@ -405,6 +433,10 @@ async function startGodszealBotInc() {
         if (connection == "open") {
             console.log(chalk.magenta(` `))
             console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(GodszealBotInc.user, null, 2)))
+
+            // Do not block the connection flow on the profile update. The
+            // helper retries in the background and logs the exact failure.
+            void applyDefaultBotLogo(GodszealBotInc)
             
             const botNumber = GodszealBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
             await GodszealBotInc.sendMessage(botNumber, { 
