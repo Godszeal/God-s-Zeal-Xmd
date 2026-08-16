@@ -10,7 +10,7 @@ const dependencyMarker = path.join(__dirname, 'node_modules', '@hapi', 'boom', '
 if (!fs.existsSync(dependencyMarker)) {
   console.log('[bootstrap] Installing bot dependencies before startup…')
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
-    'install', '--legacy-peer-deps', '--omit=dev',
+    'install', '--legacy-peer-deps', '--omit=dev', '--no-progress', '--no-audit', '--no-fund', '--loglevel=warn',
   ], { cwd: __dirname, stdio: 'inherit' })
 }
 
