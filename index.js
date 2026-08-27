@@ -3,27 +3,51 @@ const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
 
-// Panel uploads contain package.json but not node_modules. Install production
-// dependencies before loading the bot so fresh deployments do not crash with
-// MODULE_NOT_FOUND (for example, @hapi/boom).
+// Panel uploads contain package.json but can also encounter an old node_modules
+// directory left by a previous deployment. Install dependencies before loading
+// the bot so stale ESM-only Baileys versions cannot reach CommonJS require calls.
+const REQUIRED_BAILEYS_VERSION = '6.7.18'
+const nodeModulesDir = path.join(__dirname, 'node_modules')
 const dependencyMarkers = [
-  path.join(__dirname, 'node_modules', '@hapi', 'boom', 'package.json'),
-  path.join(__dirname, 'node_modules', '@whiskeysockets', 'baileys', 'package.json'),
-  path.join(__dirname, 'node_modules', 'dotenv', 'package.json'),
+  path.join(nodeModulesDir, '@hapi', 'boom', 'package.json'),
+  path.join(nodeModulesDir, '@whiskeysockets', 'baileys', 'package.json'),
+  path.join(nodeModulesDir, 'dotenv', 'package.json'),
 ]
-if (dependencyMarkers.some((marker) => !fs.existsSync(marker))) {
+
+function installedPackageVersion(packageName) {
+  try {
+    const packagePath = path.join(nodeModulesDir, ...packageName.split('/'), 'package.json')
+    return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version
+  } catch {
+    return null
+  }
+}
+
+const installedBaileysVersion = installedPackageVersion('@whiskeysockets/baileys')
+const dependenciesNeedInstall = dependencyMarkers.some((marker) => !fs.existsSync(marker))
+  || installedBaileysVersion !== REQUIRED_BAILEYS_VERSION
+
+if (dependenciesNeedInstall) {
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  console.log('[bootstrap] Installing all bot dependencies inside the panel container before startup…')
+  const reason = installedBaileysVersion
+    ? `found Baileys ${installedBaileysVersion}; require ${REQUIRED_BAILEYS_VERSION}`
+    : 'required dependencies are missing'
+  console.log(`[bootstrap] Rebuilding panel dependencies (${reason})…`)
   try {
     execFileSync(npmCommand, ['--version'], { cwd: __dirname, stdio: 'pipe' })
+    if (fs.existsSync(nodeModulesDir)) {
+      console.log('[bootstrap] Removing stale node_modules before installing the locked dependency set…')
+      fs.rmSync(nodeModulesDir, { recursive: true, force: true })
+    }
+    const installCommand = fs.existsSync(path.join(__dirname, 'package-lock.json')) ? 'ci' : 'install'
     execFileSync(npmCommand, [
-      'install', '--legacy-peer-deps', '--omit=dev', '--no-progress', '--no-audit', '--no-fund', '--loglevel=warn',
+      installCommand, '--legacy-peer-deps', '--omit=dev', '--no-progress', '--no-audit', '--no-fund', '--loglevel=warn',
     ], { cwd: __dirname, stdio: 'inherit' })
   } catch (error) {
     console.error('[bootstrap] npm is required in the panel Node.js container and dependency installation failed.')
     throw error
   }
-  console.log('[bootstrap] Panel dependency installation completed.')
+  console.log(`[bootstrap] Panel dependencies installed with Baileys ${REQUIRED_BAILEYS_VERSION}.`)
 }
 
 const { Boom } = require('@hapi/boom')
